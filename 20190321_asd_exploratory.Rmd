@@ -1,0 +1,43 @@
+---
+title: "Autism Exploratory"
+author: 'Zanis Fang, UID: ZF2213'
+date: "3/21/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+
+```
+
+```{r}
+individuals <- read_csv("./individuals.csv")
+basic_screen <- read_csv("./basic_medical_screening.csv")
+
+n_unique = c()
+
+for (i in 1:ncol(basic_screen)) {
+	n_unique <- append(n_unique, length(unique(basic_screen[[i]])))
+}
+
+
+
+length(unique(basic_screen$sex))
+bi_bs <- basic_screen[, which(n_unique == 2)]
+
+bi_bs %>% skimr::skim()
+
+for (i in 1:ncol(bi_bs)) {
+	bi_bs[[i]] <- as.numeric(as.factor(bi_bs[[i]]))
+	bi_bs[[i]][is.na(bi_bs[[i]])] <- 0
+	bi_bs[[i]] <- as.factor(bi_bs[[i]])
+}
+
+missMDA::estim_ncpMCA(bi_bs, ncp.max = 10, nbsim = 50, method.cv = "Kfold", threshold = 0.001)
+FactoMineR::MCA(bi_bs, ncp = 5)
+
+library(psych)
+fa.parallel(bi_bs, cor = "poly")
+```
+
