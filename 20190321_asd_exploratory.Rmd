@@ -20,8 +20,8 @@ n_unique = c()
 for (i in 1:ncol(basic_screen)) {
 	n_unique <- append(n_unique, length(unique(basic_screen[[i]])))
 }
-
-
+names(n_unique) <- colnames(basic_screen)
+n_unique[which(n_unique != 2)]
 
 length(unique(basic_screen$sex))
 bi_bs <- basic_screen[, which(n_unique == 2)]
@@ -34,10 +34,60 @@ for (i in 1:ncol(bi_bs)) {
 	bi_bs[[i]] <- as.factor(bi_bs[[i]])
 }
 
-missMDA::estim_ncpMCA(bi_bs, ncp.max = 10, nbsim = 50, method.cv = "Kfold", threshold = 0.001)
-FactoMineR::MCA(bi_bs, ncp = 5)
+after_unique <- c()
+for (i in 1:ncol(bi_bs)) {
+	after_unique <- append(after_unique, length(unique(bi_bs[[i]])))
+}
 
-library(psych)
-fa.parallel(bi_bs, cor = "poly")
+# missMDA::estim_ncpMCA(bi_bs, ncp.max = 10, nbsim = 50, method.cv = "Kfold", threshold = 0.001)
+mca_asd_bs <- FactoMineR::MCA(bi_bs, ncp = 15)
+
+asd_ind <- mca_asd_bs$ind$coord %>% as_tibble()
 ```
 
+
+
+```{r}
+library(FPDclustering)
+library(plotly)
+asd_bs_clust <- FPDC(asd_ind[, 1:5], k = 3, nf = 2, nu = 2)
+#3,2,2(3)best nf cannot be larger than number of column, nf cannot be 1
+Silh(asd_bs_clust$probability)
+
+asd_bs_clust <- kmeans(asd_ind, 3)
+
+kmeans_asd <- tibble(
+	# cluster1 = fpdclust$probability[, 1],
+	# cluster2 = fpdclust$probability[, 2],
+  # cluster3 = fpdclust$probability[, 3],
+	pc1 = asd_ind[[1]],
+	pc2 = asd_ind[[2]],
+	pc3 = asd_ind[[3]],
+	label = as.factor(asd_bs_clust$cluster)
+	)
+	# mutate(test = if_else(label == 1, cluster1, cluster2)) %>% 
+	# mutate(test = if_else(label == 1, cluster1,
+	# 											if_else(label == 2, cluster2, cluster3)))
+
+
+# 2d plot
+kmeans_asd %>%  ggplot(aes(x = pc1, y = pc2, color = label)) +
+	geom_point()
+
+
+# colors = c('#BF382A', '#0C4B8E')
+plot_ly(kmeans_asd,
+				x = ~pc1, y = ~pc2, z = ~pc3, color = ~label, size = 1,
+				marker = list(symbol = 'circle',
+											sizemode = 'diameter'), sizes = 1) %>%
+	add_markers()
+  layout(scene = list(xaxis = list(title = 'NDD related',
+  																 range = c(-20, 10)),
+                     yaxis = list(title = 'Figures',
+                     						 range = c(-10, 10)),
+                     zaxis = list(title = 'CDH therapy',
+                     						 range = c(-10, 5))))
+
+
+
+```
