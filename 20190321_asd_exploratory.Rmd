@@ -6,14 +6,32 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE, cache = TRUE,
+											message = FALSE, warning = FALSE)
 library(tidyverse)
 
 ```
 
-```{r}
+### Data cleaning
+
+For modeling, exclude **subject_sp_id, respondent_sp_id, family_id, role, age_at_eval_years** (because of redundancy with age_at_eval_months).
+
+Following variables are removed because they are mostly NA's:
+**birth_def_oth_calc, gen_dx_calc, prev_study_calc, gest_age**
+
+Self-reported genetic test results were also removed because they can hardly be quantified, and too many levels to be a categorical variable, besides, some have multiple self-reported test results:
+**gen_dx1_self_report, gen_dx2_self_report**
+
+Replace NA's with 0 where NA's are intented to be zero according to code book.
+
+
+
+```{r data_cleaning}
 individuals <- read_csv("./individuals.csv")
 basic_screen <- read_csv("./basic_medical_screening.csv")
+asd_scq <- read_csv("./scq.csv")
+asd_rbs <- read_csv("./rbs-r.csv")
+asd_dcdq <- read_csv("./dcdq.csv")
 
 n_unique = c()
 
@@ -21,40 +39,204 @@ for (i in 1:ncol(basic_screen)) {
 	n_unique <- append(n_unique, length(unique(basic_screen[[i]])))
 }
 names(n_unique) <- colnames(basic_screen)
-n_unique[which(n_unique != 2)]
+# n_unique[which(n_unique != 2)]
 
-length(unique(basic_screen$sex))
-bi_bs <- basic_screen[, which(n_unique == 2)]
-
-bi_bs %>% skimr::skim()
+bi_bs <- basic_screen[, which(n_unique %in% c(2, 3, 934))]
+# basic_screen %>% skimr::skim()
+# bi_bs %>% skimr::skim()
 
 for (i in 1:ncol(bi_bs)) {
-	bi_bs[[i]] <- as.numeric(as.factor(bi_bs[[i]]))
-	bi_bs[[i]][is.na(bi_bs[[i]])] <- 0
-	bi_bs[[i]] <- as.factor(bi_bs[[i]])
+	# structural imputation
+	if (length(unique(bi_bs[[i]])) == 2) {
+		bi_bs[[i]][is.na(bi_bs[[i]])] <- 0
+	}
+	# making factor variables
+	if (length(unique(bi_bs[[i]])) <= 3) {
+		bi_bs[[i]] <- as.factor(bi_bs[[i]])
+	}
 }
 
-after_unique <- c()
-for (i in 1:ncol(bi_bs)) {
-	after_unique <- append(after_unique, length(unique(bi_bs[[i]])))
-}
-
-# missMDA::estim_ncpMCA(bi_bs, ncp.max = 10, nbsim = 50, method.cv = "Kfold", threshold = 0.001)
-mca_asd_bs <- FactoMineR::MCA(bi_bs, ncp = 15)
-
-asd_ind <- mca_asd_bs$ind$coord %>% as_tibble()
+# after_unique <- c()
+# for (i in 1:ncol(bi_bs)) {
+# 	after_unique <- append(after_unique, length(unique(bi_bs[[i]])))
+# }
+# after_unique
 ```
 
 
+### Factor analysis
+
+One analysis with support from professional autism diagnosis (asd variable), one without support from professional autism diagnosis.
+
+First four dimensions outcompete others.
+
+```{r FAMD}
+# slow to estimate number of components
+# missMDA::estim_ncpMCA(bi_bs, ncp.max = 10, nbsim = 50, method.cv = "Kfold", threshold = 0.001)
+
+# perhaps it is not worth to spend such long time to impute very small fraction of missing values
+imputed_basic <- missMDA::imputeFAMD(bi_bs, ncp = 15)
+famd_asd_bs <- FactoMineR::FAMD(imputed_basic$completeObs,
+																ncp = 15, graph = FALSE)
+famd_no_asd <- FactoMineR::FAMD(imputed_basic$completeObs %>%
+																	select(-asd), ncp = 15, graph = FALSE)
+
+# famd_no_asd$eig %>% as_tibble() %>% mutate(row_num = row_number()) %>% 
+# 	ggplot(aes(x = row_num, y = eigenvalue)) +
+# 	geom_point() +
+# 	theme_bw() +
+# 	labs(
+# 		x = "Dimensions",
+# 		y = "Eigenvalues"
+# 	)
+
+# Choose four components
+
+# another way to do it, quite slow
+# for (i in 1:ncol(bi_bs)) {
+# 	bi_bs[[i]] <- as.numeric(bi_bs[[i]])
+# }
+# asd_fa_poly <- psych::fa.parallel.poly(bi_bs)
+
+# dimension coordinate for 
+asd_ind <- famd_no_asd$ind$coord %>% as_tibble()
+
+# skewed distribution
+# asd_ind %>% ggplot(aes(x = Dim.1)) + geom_histogram()
+# asd_ind %>% ggplot(aes(x = log(Dim.1 + 3.5))) +
+# 	geom_histogram(bins = 250)
+
+
+```
+
+! [Eigenvalues](./asd_fa_parellel_pc_screeplot.png)
+
+### Variables on first four dimensions
+
+**Using the FAMD result without asd diagnosis information**
+
+Get variable names for top 5 vars for top four dimensions.
+
+```{r top_variables}
+
+famd_dim1 <- famd_no_asd$var$contrib %>% as_tibble() %>%
+	mutate(variable = rownames(famd_no_asd$var$contrib)) %>% 
+	janitor::clean_names() %>%
+	arrange(desc(dim_1)) %>%
+	mutate(num_row = row_number())
+
+# famd_dim1 %>% 
+# 	ggplot(aes(x = num_row, y = dim_1)) +
+# 	geom_point() + 
+# 	geom_vline(xintercept = 17.5) +
+# 	labs(title = "Variable Loadings on 1st Dimension",
+# 			 x = "Rank",
+# 			 y = "Loadings on 1st Dimension") +
+# 	theme_bw()
+
+famd_dim1 %>% 
+	select(variable, dim_1) %>% top_n(5) %>% knitr::kable()
+
+famd_dim2 <- famd_no_asd$var$contrib %>% as_tibble() %>%
+	mutate(variable = rownames(famd_no_asd$var$contrib)) %>% 
+	janitor::clean_names() %>%
+	arrange(desc(dim_2)) %>%
+	mutate(num_row = row_number())
+
+# famd_dim2 %>% 
+# 	ggplot(aes(x = num_row, y = dim_2)) +
+# 	geom_point() + 
+# 	geom_vline(xintercept = 9.5) +
+# 	labs(title = "Variable Loadings on 2nd Dimension",
+# 			 x = "Rank",
+# 			 y = "Loadings on 2nd Dimension") +
+# 	theme_bw()
+
+famd_dim2 %>% 
+	select(variable, dim_2) %>% top_n(5) %>% knitr::kable()
+
+famd_dim3 <- famd_no_asd$var$contrib %>% as_tibble() %>%
+	mutate(variable = rownames(famd_no_asd$var$contrib)) %>% 
+	janitor::clean_names() %>%
+	arrange(desc(dim_3)) %>%
+	mutate(num_row = row_number())
+
+# famd_dim3 %>% 
+# 	ggplot(aes(x = num_row, y = dim_3)) +
+# 	geom_point() + 
+# 	geom_vline(xintercept = 11.5) +
+# 	labs(title = "Variable Loadings on 3rd Dimension",
+# 			 x = "Rank",
+# 			 y = "Loadings on 3rd Dimension") +
+# 	theme_bw()
+
+famd_dim3 %>% 
+	select(variable, dim_3) %>% top_n(5) %>% knitr::kable()
+
+famd_dim4 <- famd_no_asd$var$contrib %>% as_tibble() %>%
+	mutate(variable = rownames(famd_no_asd$var$contrib)) %>% 
+	janitor::clean_names() %>%
+	arrange(desc(dim_4)) %>%
+	mutate(num_row = row_number())
+
+# famd_dim4 %>% 
+# 	ggplot(aes(x = num_row, y = dim_4)) +
+# 	geom_point() + 
+# 	geom_vline(xintercept = 15.5) +
+# 	labs(title = "Variable Loadings on 4th Dimension",
+# 			 x = "Rank",
+# 			 y = "Loadings on 4th Dimension") +
+# 	theme_bw()
+
+famd_dim4 %>% 
+	select(variable, dim_4) %>% top_n(5) %>% knitr::kable()
+
+
+```
+
+#### Intepretation
+
+**First dimension** are mostly ASD and developmental disorders, sleep/eating/toileting problems, but not birth defects or due to another medical conditions.
+
+**Second dimension** are mood related disorders such as anxiety, biopolar depression, etc.
+
+**Third dimensions** are mostly birth defects.
+
+**Fourth dimensions** are genetic testings (They are independent of birth defects/disorders).
+
+
+### Autism score calculated from top variables of 1st dimensions
+
+Output an file for M-plus software to calculate a "score" for autism.
+
+```{r item_response_theory}
+
+# age (months) at evaluation is removed
+asd_dim1 <-
+	bi_bs[, which(colnames(bi_bs) %in%
+									(famd_dim1 %>%
+									 	select(variable, dim_1) %>% 
+									 	top_n(17))[[1]])] %>%
+	select(-age_at_eval_months)
+
+# asd_dim1 %>% write_csv("./dim1_asd.csv", col_names = FALSE)
+asd_irt_dim1 <- read_table("irt_dim1.csv", col_names = FALSE)
+
+```
+
+
+### K-means clustering
+
+Use K-means to cluster on FAMD individuals' coordinates (15 dimensions).
 
 ```{r}
-library(FPDclustering)
+# library(FPDclustering)
 library(plotly)
-asd_bs_clust <- FPDC(asd_ind[, 1:5], k = 3, nf = 2, nu = 2)
-#3,2,2(3)best nf cannot be larger than number of column, nf cannot be 1
-Silh(asd_bs_clust$probability)
+# memory exhausted
+# asd_bs_clust <- FPDC(asd_ind[, 1:5], k = 3, nf = 2, nu = 2)
+# Silh(asd_bs_clust$probability)
 
-asd_bs_clust <- kmeans(asd_ind, 3)
+asd_bs_clust <- kmeans(asd_ind, 4)
 
 kmeans_asd <- tibble(
 	# cluster1 = fpdclust$probability[, 1],
@@ -63,31 +245,147 @@ kmeans_asd <- tibble(
 	pc1 = asd_ind[[1]],
 	pc2 = asd_ind[[2]],
 	pc3 = asd_ind[[3]],
-	label = as.factor(asd_bs_clust$cluster)
+	pc4 = asd_ind[[4]],
+	pc5 = asd_ind[[5]],
+	pc6 = asd_ind[[6]],
+	label = as.factor(asd_bs_clust$cluster),
+	asd = as.factor(bi_bs$asd),
+	irt_score = asd_irt_dim1$X17
 	)
 	# mutate(test = if_else(label == 1, cluster1, cluster2)) %>% 
 	# mutate(test = if_else(label == 1, cluster1,
 	# 											if_else(label == 2, cluster2, cluster3)))
 
 
-# 2d plot
-kmeans_asd %>%  ggplot(aes(x = pc1, y = pc2, color = label)) +
-	geom_point()
 
-
-# colors = c('#BF382A', '#0C4B8E')
 plot_ly(kmeans_asd,
-				x = ~pc1, y = ~pc2, z = ~pc3, color = ~label, size = 1,
+				x = ~pc1, y = ~pc2, z = ~pc3, color = ~label, size = 0.1,
 				marker = list(symbol = 'circle',
-											sizemode = 'diameter'), sizes = 1) %>%
-	add_markers()
-  layout(scene = list(xaxis = list(title = 'NDD related',
-  																 range = c(-20, 10)),
-                     yaxis = list(title = 'Figures',
-                     						 range = c(-10, 10)),
-                     zaxis = list(title = 'CDH therapy',
-                     						 range = c(-10, 5))))
+											sizemode = 'diameter',
+											colorscale = "Viridis"), sizes = 1) %>%
+	add_markers() %>% 
+  layout(title = "Clusters on 3-dimension scatterplot",
+  	scene = list(xaxis = list(title = 'Development&ASD',
+  																 range = c(-10, 20)),
+  										yaxis = list(title = 'Mood&Depression',
+  																 range = c(-20, 20)),
+  										zaxis = list(title = 'Birth defects',
+  																 range = c(-10, 20))))
+```
 
+#### Intepretation
+
+Four clusters are quite interpretable.
+
+**Cluster 1**: Individuals without autism but has mood disorder (anxiety, bipolar disorder, etc), without severe birth defects.
+
+**Cluster 2**: Individuals without autism or mood disorder, without severe birth defects.
+
+**Cluster 3**: Individuals who have autism, but without severe birth defects.
+
+**Cluster 4**: Individuals with severe birth defects.
+
+### Effectiveness of using first dimension on diagnosing autism
+
+Color individual's autism diagnosis on 3d scatterplot:
+
+```{r}
+plot_ly(kmeans_asd,
+				x = ~pc1, y = ~pc2, z = ~pc3, color = ~asd, size = 0.1,
+				symbol = ~asd, 
+				marker = list(symbol = 'circle',
+											sizemode = 'diameter',
+											colorscale = "Viridis"), sizes = 1) %>%
+	add_markers() %>% 
+  layout(
+  	title = "Autism diagnosis",
+  	scene = list(
+  										xaxis = list(title = 'Development&ASD',
+  																 range = c(-10, 20)),
+  										yaxis = list(title = 'Mood&Depression',
+  																 range = c(-20, 20)),
+  										zaxis = list(title = 'Birth defects',
+  																 range = c(-10, 20))))
+
+```
+
+**Relations between four datasets**
+
+Almost all individuals who took social-communication questionnaire, repetitive behavior test, and/or developmental coordination disorder questionnaire have taken basic medical screening.
+
+```{r combine_four_datasets}
+
+fa_irt_corr <- tibble(
+	subject_sp_id = basic_screen$subject_sp_id,
+	fa_score = log(asd_ind[[1]] + 3.5),
+	mood = asd_ind[[2]],
+	birth_defect = asd_ind[[3]],
+	irt_score = asd_irt_dim1$X17,
+	diag_asd = bi_bs$asd
+	)
+
+fa_irt_scq <- full_join(x = fa_irt_corr,
+												y = asd_scq[, c(1, 54)] %>%
+													rename(scq_score = final_score))
+
+fa_irt_scq_rbs <- full_join(x = fa_irt_scq,
+														y = asd_rbs[, c(1, 63)] %>% 
+															rename(rbs_score = total_final_score))
+
+fa_irt_scq_rbs_dcdq <-
+	full_join(x = fa_irt_scq_rbs,
+						y = asd_dcdq[, c(1, 29)] %>% 
+							rename(dcdq_score = final_score))
+```
+
+```{r correlations, eval = FALSE}
+
+fa_irt_scq_rbs_dcdq %>% ggplot(aes(x = fa_score, y = diag_asd)) +
+	geom_point(alpha = 0.01, size = 0.01)
+	# stat_smooth(method = "glm", method.args = list(family = binomial(link = "logit")), se = FALSE, fullrange = TRUE, color = "red")
+
+fa_irt_scq_rbs_dcdq %>% ggplot(aes(x = irt_score, y = fa_score, color = diag_asd)) + geom_point(alpha = 0.05)
+
+fa_irt_scq_rbs_dcdq %>% ggplot(aes(x = birth_defect, y = irt_score, color = diag_asd)) + geom_point(alpha = 0.05)
+
+
+# plot_ly(fa_irt_scq_rbs_dcdq,
+# 				x = ~fa_score, y = ~scq_score, z = ~rbs_score,
+# 				size = 0.5,
+# 				marker = list(symbol = 'circle',
+# 											sizemode = 'diameter',
+# 											colorscale = "Viridis"), sizes = 1) %>%
+# 	add_markers() %>% 
+#   layout(scene = list(# xaxis = list(range = c(-10, 15)),
+#                      # yaxis = list(range = c(10, 80)),
+#                      zaxis = list(range = c(0, 120))))
 
 
 ```
+
+
+**ROC curves**
+
+I use ROC curves to check how comparable the sensitivity and specificity are between **1st dimension**, **top 16 variables from 1st dimension** generated from **Basic Medical Screening** and **Social-Communication Questionnaire**, **Developmental Coordination Disorder** and **Repetitive Behavior Scaled**. However, since all individuals who took social-communication and developmental coordination disorder questionnaires are autism patients, I cannot generate their ROC curves.
+
+Red: IRT (top 16 variables on 1st dimension alone)
+Blue: 1st dimension score
+Black: Repetitive Behavior Scale
+
+```{r roc_curves}
+roc_fa_dim1 <-
+	pROC::plot.roc(kmeans_asd$asd, kmeans_asd$pc1,
+								 col = "blue", print.thres = TRUE)
+
+roc_irt_dim1 <-
+	pROC::plot.roc(kmeans_asd$asd, kmeans_asd$irt_score,
+								 add = TRUE, col = "red", print.thres = TRUE)
+
+roc_scq <- pROC::plot.roc(fa_irt_scq_rbs_dcdq$diag_asd,
+							 fa_irt_scq_rbs_dcdq$scq_score,
+							 add = TRUE, col = "black", print.thres = TRUE)
+
+
+```
+
+**They have comparable specificity, but much less sensitivity**
