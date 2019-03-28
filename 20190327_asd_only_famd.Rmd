@@ -1,0 +1,229 @@
+---
+title: "20190327 Factor Analysis of ASD patients"
+author: 'Zanis Fang, UID: ZF2213'
+date: "3/27/2019"
+output: html_document
+---	
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, cache = TRUE,
+											message = FALSE, warning = FALSE)
+library(tidyverse)
+```
+
+
+```{r data_cleaning}
+individuals <- read_csv("./individuals.csv")
+basic_screen <- read_csv("./basic_medical_screening.csv")
+
+n_unique = c()
+
+for (i in 1:ncol(basic_screen)) {
+	n_unique <- append(n_unique, length(unique(basic_screen[[i]])))
+}
+names(n_unique) <- colnames(basic_screen)
+# n_unique[which(n_unique != 2)]
+
+bi_bs <- basic_screen[, which(n_unique %in% c(2, 3, 934, 90549))]
+# basic_screen %>% skimr::skim()
+# bi_bs %>% skimr::skim()
+
+for (i in 1:ncol(bi_bs)) {
+	# structural imputation
+	if (length(unique(bi_bs[[i]])) == 2) {
+		bi_bs[[i]][is.na(bi_bs[[i]])] <- 0
+	}
+	# making factor variables
+	if (length(unique(bi_bs[[i]])) <= 3) {
+		bi_bs[[i]] <- as.factor(bi_bs[[i]])
+	}
+}
+
+# after_unique <- c()
+# for (i in 1:ncol(bi_bs)) {
+# 	after_unique <- append(after_unique, length(unique(bi_bs[[i]])))
+# }
+# after_unique
+```
+
+
+```{r}
+sample_id <- bi_bs$subject_sp_id
+bi_bs <- bi_bs %>% filter(asd == 1) %>% select(-asd, -subject_sp_id)
+
+imputed_basic <- missMDA::imputeFAMD(bi_bs, ncp = 10)
+famd_asd_bs <- FactoMineR::FAMD(imputed_basic$completeObs,
+																ncp = 10, graph = FALSE)
+
+```
+
+### Eigenvalues for factor analysis
+
+The eigenvalue of 1st dimension reduced from 8.43 (explain %6.86 variance) to 6.28 (explain %5.12 variance).
+
+2nd dimension increases its eigenvalues and variance explained. 3rd and 4th dimension remains the same.
+
+```{r}
+famd_asd_bs$eig %>% as_tibble() %>% mutate(row_num = row_number()) %>%
+	ggplot(aes(x = row_num, y = eigenvalue)) +
+	geom_point() +
+	theme_bw() +
+	labs(
+		x = "Dimensions",
+		y = "Eigenvalues"
+	)
+
+asd_ind <- famd_asd_bs$ind$coord %>% as_tibble()
+
+
+# for (i in 1:ncol(asd_ind)) {
+# 	asd_ind[[i]] <- asd_ind[[i]] * famd_asd_bs$eig[i]
+# }
+
+
+```
+
+
+### Intepretation of dimensions
+
+The top four dimensions can still be intepreted as before, with changes in top variable loadings on **1st** and **4th** dimension.
+
+```{r}
+famd_dim1 <- famd_asd_bs$var$contrib %>% as_tibble() %>%
+	mutate(variable = rownames(famd_asd_bs$var$contrib)) %>% 
+	janitor::clean_names() %>%
+	arrange(desc(dim_1)) %>%
+	mutate(num_row = row_number())
+
+# famd_dim1 %>%
+# 	ggplot(aes(x = num_row, y = dim_1)) +
+# 	geom_point() +
+# 	geom_vline(xintercept = 17.5) +
+# 	labs(title = "Variable Loadings on 1st Dimension",
+# 			 x = "Rank",
+# 			 y = "Loadings on 1st Dimension") +
+# 	theme_bw()
+
+famd_dim1 %>% 
+	select(variable, dim_1) %>% top_n(10) %>% knitr::kable()
+
+famd_dim2 <- famd_asd_bs$var$contrib %>% as_tibble() %>%
+	mutate(variable = rownames(famd_asd_bs$var$contrib)) %>% 
+	janitor::clean_names() %>%
+	arrange(desc(dim_2)) %>%
+	mutate(num_row = row_number())
+
+# famd_dim2 %>% 
+# 	ggplot(aes(x = num_row, y = dim_2)) +
+# 	geom_point() + 
+# 	geom_vline(xintercept = 9.5) +
+# 	labs(title = "Variable Loadings on 2nd Dimension",
+# 			 x = "Rank",
+# 			 y = "Loadings on 2nd Dimension") +
+# 	theme_bw()
+
+famd_dim2 %>% 
+	select(variable, dim_2) %>% top_n(10) %>% knitr::kable()
+
+famd_dim3 <- famd_asd_bs$var$contrib %>% as_tibble() %>%
+	mutate(variable = rownames(famd_asd_bs$var$contrib)) %>% 
+	janitor::clean_names() %>%
+	arrange(desc(dim_3)) %>%
+	mutate(num_row = row_number())
+
+# famd_dim3 %>% 
+# 	ggplot(aes(x = num_row, y = dim_3)) +
+# 	geom_point() + 
+# 	geom_vline(xintercept = 11.5) +
+# 	labs(title = "Variable Loadings on 3rd Dimension",
+# 			 x = "Rank",
+# 			 y = "Loadings on 3rd Dimension") +
+# 	theme_bw()
+
+famd_dim3 %>% 
+	select(variable, dim_3) %>% top_n(10) %>% knitr::kable()
+
+famd_dim4 <- famd_asd_bs$var$contrib %>% as_tibble() %>%
+	mutate(variable = rownames(famd_asd_bs$var$contrib)) %>% 
+	janitor::clean_names() %>%
+	arrange(desc(dim_4)) %>%
+	mutate(num_row = row_number())
+
+# famd_dim4 %>% 
+# 	ggplot(aes(x = num_row, y = dim_4)) +
+# 	geom_point() + 
+# 	geom_vline(xintercept = 15.5) +
+# 	labs(title = "Variable Loadings on 4th Dimension",
+# 			 x = "Rank",
+# 			 y = "Loadings on 4th Dimension") +
+# 	theme_bw()
+
+famd_dim4 %>% 
+	select(variable, dim_4) %>% top_n(10) %>% knitr::kable()
+
+```
+
+**First dimension** are mostly sleep/eating/toileting problems, and several developmental disorders. The number of developmental disorder related variables are less than previous analysis.
+
+**Second dimension** are mood related disorders such as anxiety, biopolar depression, etc. (Roughly the same as previous analysis)
+
+**Third dimensions** are mostly birth defects. (Roughly the same as previous analysis)
+
+**Fourth dimensions** are genetic testings (They are independent of birth defects/disorders).
+
+
+### K-means
+
+Four-cluster is still meaningful.
+
+```{r}
+# library(FPDclustering)
+library(plotly)
+# memory exhausted
+# asd_bs_clust <- FPDC(asd_ind[, 1:5], k = 3, nf = 2, nu = 2)
+# Silh(asd_bs_clust$probability)
+
+asd_bs_clust <- kmeans(asd_ind, 4)
+
+kmeans_asd <- tibble(
+	# cluster1 = fpdclust$probability[, 1],
+	# cluster2 = fpdclust$probability[, 2],
+  # cluster3 = fpdclust$probability[, 3],
+	pc1 = asd_ind[[1]],
+	pc2 = asd_ind[[2]],
+	pc3 = asd_ind[[3]],
+	pc4 = asd_ind[[4]],
+	pc5 = asd_ind[[5]],
+	pc6 = asd_ind[[6]],
+	label = as.factor(asd_bs_clust$cluster)
+	)
+	# mutate(test = if_else(label == 1, cluster1, cluster2)) %>% 
+	# mutate(test = if_else(label == 1, cluster1,
+	# 											if_else(label == 2, cluster2, cluster3)))
+
+
+
+plot_ly(kmeans_asd,
+				x = ~pc1, y = ~pc2, z = ~pc3, color = ~label, size = 0.1,
+				marker = list(symbol = 'circle',
+											sizemode = 'diameter',
+											colorscale = "Viridis"), sizes = 1) %>%
+	add_markers() %>% 
+  layout(title = "Clusters on 3-dimension scatterplot",
+  	scene = list(xaxis = list(title = 'Development&ASD',
+  																 range = c(-10, 20)),
+  										yaxis = list(title = 'Mood&Depression',
+  																 range = c(-20, 20)),
+  										zaxis = list(title = 'Birth defects',
+  																 range = c(-10, 20))))
+```
+
+**K-mean results shows that the clusters are more separated on Mood&Depression rather than Development&ASD.**
+
+
+
+
+
+
+
+

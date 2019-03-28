@@ -81,14 +81,39 @@ famd_asd_bs <- FactoMineR::FAMD(imputed_basic$completeObs,
 famd_no_asd <- FactoMineR::FAMD(imputed_basic$completeObs %>%
 																	select(-asd), ncp = 15, graph = FALSE)
 
-# famd_no_asd$eig %>% as_tibble() %>% mutate(row_num = row_number()) %>% 
-# 	ggplot(aes(x = row_num, y = eigenvalue)) +
-# 	geom_point() +
-# 	theme_bw() +
-# 	labs(
-# 		x = "Dimensions",
-# 		y = "Eigenvalues"
-# 	)
+# write_csv(famd_no_asd$eig %>% as_tibble(),
+# 					"./famd/famd_no_asd_eig.csv")
+# write_csv(famd_no_asd$ind$coord %>% as_tibble(),
+# 					"./famd/famd_no_asd_ind_coord.csv")
+# write_csv(famd_no_asd$ind$contrib %>% as_tibble(),
+# 					"./famd/famd_no_asd_ind_contrib.csv")
+# write_csv(famd_no_asd$var$coord %>% as_tibble(),
+# 					"./famd/famd_no_asd_var_coord.csv")
+# write_csv(famd_no_asd$var$contrib %>% as_tibble(),
+# 					"./famd/famd_no_asd_var_contrib.csv")
+
+# write_csv(famd_asd_bs$eig %>% as_tibble(),
+# 					"./famd/famd_asd_bs_eig.csv")
+# write_csv(famd_asd_bs$ind$coord %>% as_tibble(),
+# 					"./famd/famd_asd_bs_ind_coord.csv")
+# write_csv(famd_asd_bs$ind$contrib %>% as_tibble(),
+# 					"./famd/famd_asd_bs_ind_contrib.csv")
+# write_csv(famd_asd_bs$var$coord %>% as_tibble(),
+# 					"./famd/famd_asd_bs_var_coord.csv")
+# write_csv(famd_asd_bs$var$contrib %>% as_tibble(),
+# 					"./famd/famd_asd_bs_var_contrib.csv")
+
+famd_no_asd_eig <- famd_no_asd$eig
+# famd_no_asd_eig <- read_csv("./famd/famd_no_asd_eig.csv")
+
+famd_no_asd_eig %>% as_tibble() %>% mutate(row_num = row_number()) %>%
+	ggplot(aes(x = row_num, y = eigenvalue)) +
+	geom_point() +
+	theme_bw() +
+	labs(
+		x = "Dimensions",
+		y = "Eigenvalues"
+	)
 
 # Choose four components
 
@@ -98,7 +123,8 @@ famd_no_asd <- FactoMineR::FAMD(imputed_basic$completeObs %>%
 # }
 # asd_fa_poly <- psych::fa.parallel.poly(bi_bs)
 
-# dimension coordinate for 
+# dimension coordinate for
+# asd_ind <- read_csv("./famd/famd_no_asd_ind_coord.csv")
 asd_ind <- famd_no_asd$ind$coord %>% as_tibble()
 
 # skewed distribution
@@ -109,7 +135,6 @@ asd_ind <- famd_no_asd$ind$coord %>% as_tibble()
 
 ```
 
-! [Eigenvalues](./asd_fa_parellel_pc_screeplot.png)
 
 ### Variables on first four dimensions
 
@@ -119,7 +144,10 @@ Get variable names for top 5 vars for top four dimensions.
 
 ```{r top_variables}
 
-famd_dim1 <- famd_no_asd$var$contrib %>% as_tibble() %>%
+# famd_no_asd_var_contrib <- read_csv("./famd/famd_no_asd_var_coord.csv")
+famd_no_asd_var_contrib <- famd_no_asd$var$contrib
+
+famd_dim1 <- famd_no_asd_var_contrib %>% as_tibble() %>%
 	mutate(variable = rownames(famd_no_asd$var$contrib)) %>% 
 	janitor::clean_names() %>%
 	arrange(desc(dim_1)) %>%
@@ -137,7 +165,7 @@ famd_dim1 <- famd_no_asd$var$contrib %>% as_tibble() %>%
 famd_dim1 %>% 
 	select(variable, dim_1) %>% top_n(5) %>% knitr::kable()
 
-famd_dim2 <- famd_no_asd$var$contrib %>% as_tibble() %>%
+famd_dim2 <- famd_no_asd_var_contrib %>% as_tibble() %>%
 	mutate(variable = rownames(famd_no_asd$var$contrib)) %>% 
 	janitor::clean_names() %>%
 	arrange(desc(dim_2)) %>%
@@ -155,7 +183,7 @@ famd_dim2 <- famd_no_asd$var$contrib %>% as_tibble() %>%
 famd_dim2 %>% 
 	select(variable, dim_2) %>% top_n(5) %>% knitr::kable()
 
-famd_dim3 <- famd_no_asd$var$contrib %>% as_tibble() %>%
+famd_dim3 <- famd_no_asd_var_contrib %>% as_tibble() %>%
 	mutate(variable = rownames(famd_no_asd$var$contrib)) %>% 
 	janitor::clean_names() %>%
 	arrange(desc(dim_3)) %>%
@@ -173,7 +201,7 @@ famd_dim3 <- famd_no_asd$var$contrib %>% as_tibble() %>%
 famd_dim3 %>% 
 	select(variable, dim_3) %>% top_n(5) %>% knitr::kable()
 
-famd_dim4 <- famd_no_asd$var$contrib %>% as_tibble() %>%
+famd_dim4 <- famd_no_asd_var_contrib %>% as_tibble() %>%
 	mutate(variable = rownames(famd_no_asd$var$contrib)) %>% 
 	janitor::clean_names() %>%
 	arrange(desc(dim_4)) %>%
@@ -381,6 +409,7 @@ roc_irt_dim1 <-
 	pROC::plot.roc(kmeans_asd$asd, kmeans_asd$irt_score,
 								 add = TRUE, col = "red", print.thres = TRUE)
 
+
 roc_scq <- pROC::plot.roc(fa_irt_scq_rbs_dcdq$diag_asd,
 							 fa_irt_scq_rbs_dcdq$scq_score,
 							 add = TRUE, col = "black", print.thres = TRUE)
@@ -389,3 +418,63 @@ roc_scq <- pROC::plot.roc(fa_irt_scq_rbs_dcdq$diag_asd,
 ```
 
 **They have comparable specificity, but much less sensitivity**
+
+### IQ, Epilepsy
+
+```{r}
+
+bi_bs %>%
+	mutate(severity = log(asd_ind$Dim.1 + 3.5),
+				 asd = basic_screen$asd) %>%
+	ggplot(aes(x = severity, y = asd, color = asd)) +
+	geom_point(alpha = 0.01, size = 0.01, show.legend = FALSE) +
+	theme_bw() +
+	theme(panel.grid.major = element_blank(),
+				panel.grid.minor = element_blank()) +
+	labs(x = "Severity of ASD",
+			 y = "ASD")
+
+
+bi_bs %>%
+	mutate(severity = log(asd_ind$Dim.1 + 3.5)) %>%
+	ggplot(aes(x = severity, y = dev_id, color = dev_id)) +
+	geom_point(alpha = 0.01, size = 0.01, show.legend = FALSE) +
+	theme_bw() +
+	theme(panel.grid.major = element_blank(),
+				panel.grid.minor = element_blank()) +
+	labs(x = "Severity of ASD",
+			 y = "Intellectual disability")
+
+bi_bs %>%
+	mutate(severity = log(asd_ind$Dim.1 + 3.5)) %>%
+	ggplot(aes(x = severity, y = gen_test_id, color = gen_test_id)) +
+	geom_point(alpha = 0.1, show.legend = FALSE) +
+	theme_bw() +
+	theme(panel.grid.major = element_blank(),
+				panel.grid.minor = element_blank()) +
+	labs(x = "Severity of ASD",
+			 y = "Genetic test for Intellectual disability")
+
+
+bi_bs %>%
+	mutate(severity = log(asd_ind$Dim.1 + 3.5)) %>%
+	ggplot(aes(x = severity, y = neuro_sz, color = neuro_sz)) +
+	geom_point(alpha = 0.01, show.legend = FALSE) +
+	theme_bw() +
+	theme(panel.grid.major = element_blank(),
+				panel.grid.minor = element_blank()) +
+	labs(x = "Severity of ASD",
+			 y = "Seizure or epilepsy")
+
+bi_bs %>% mutate(severity = log(asd_ind$Dim.1 + 3.5)) %>%
+	ggplot(aes(x = severity, y = sex, color = sex)) +
+	geom_point(alpha = 0.01, show.legend = FALSE) +
+	theme_bw() +
+	theme(panel.grid.major = element_blank(),
+				panel.grid.minor = element_blank()) +
+	labs(x = "Severity of ASD",
+			 y = "Sex")
+
+
+```
+
